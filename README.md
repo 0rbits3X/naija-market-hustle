@@ -4,7 +4,7 @@ Static game (Abuja edition). Host on GitHub Pages.
 
 ## Setup (in this order)
 1. Put your Supabase URL and anon key in `config.js`.
-2. Supabase > SQL editor: run `supabase/chat_moderation.sql`, then `supabase/v4_scores_gifts.sql`. (`hardening.sql` is replaced by v4.)
+2. Supabase > SQL editor: paste and run `supabase/full_setup.sql` (it contains everything below in the right order). Do not run `hardening.sql`.
 3. Then run `supabase/friends_rooms.sql` (private free-text chat rooms for friends).
 4. Supabase > Authentication: turn on Anonymous sign-ins and add Cloudflare Turnstile captcha.
 5. Test with a fresh browser: play 3 days, check the Top tab, send a chat phrase, try a gift.

@@ -42,13 +42,14 @@ create policy mh_rmsg_read on public.room_messages for select to authenticated
 -- 1) Make a room (max 2 per player). Returns the 6-character code to share.
 create or replace function public.mh_room_create() returns text
 language plpgsql security definer set search_path = public as $$
-declare c text; tries int := 0;
+declare c text; tries int := 0; al text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; i int;
 begin
   if auth.uid() is null then raise exception 'login'; end if;
   if (select count(*) from public.rooms where owner = auth.uid()) >= 2 then raise exception 'too_many_rooms'; end if;
   loop
-    c := upper(substr(translate(encode(gen_random_bytes(6),'base64'),'+/=Il1O0',''),1,6));
-    exit when length(c) = 6 and not exists (select 1 from public.rooms where code = c);
+    c := '';
+    for i in 1..6 loop c := c || substr(al, 1 + floor(random()*32)::int, 1); end loop;
+    exit when not exists (select 1 from public.rooms where code = c);
     tries := tries + 1; if tries > 20 then raise exception 'try_again'; end if;
   end loop;
   insert into public.rooms(code, owner) values (c, auth.uid());
@@ -57,12 +58,19 @@ begin
 end $$;
 
 -- 2) Join a room by code (max 20 members, max 5 rooms per player).
+create table if not exists public.room_join_fails(uid uuid not null, at timestamptz not null default now());
+alter table public.room_join_fails enable row level security;
+revoke all on public.room_join_fails from anon, authenticated;
+
 create or replace function public.mh_room_join(p_code text) returns text
 language plpgsql security definer set search_path = public as $$
 declare c text := upper(trim(coalesce(p_code,'')));
 begin
   if auth.uid() is null then raise exception 'login'; end if;
-  if not exists (select 1 from public.rooms where code = c) then return 'no_room'; end if;
+  delete from public.room_join_fails where at < now() - interval '1 hour';
+  if (select count(*) from public.room_join_fails where uid = auth.uid() and at > now() - interval '10 minutes') >= 8 then return 'slow_down'; end if;
+  if not exists (select 1 from public.rooms where code = c) then
+    insert into public.room_join_fails(uid) values (auth.uid()); return 'no_room'; end if;
   if exists (select 1 from public.room_members where room_code = c and uid = auth.uid()) then return 'ok'; end if;
   if (select count(*) from public.room_members where room_code = c) >= 20 then return 'full'; end if;
   if (select count(*) from public.room_members where uid = auth.uid()) >= 5 then return 'too_many_rooms'; end if;
@@ -103,10 +111,6 @@ revoke all on function public.mh_room_create(), public.mh_room_join(text),
   public.mh_room_leave(text), public.mh_room_say(text,text,text) from public, anon;
 grant execute on function public.mh_room_create(), public.mh_room_join(text),
   public.mh_room_leave(text), public.mh_room_say(text,text,text) to authenticated;
-
--- Needs the pgcrypto extension for gen_random_bytes (Supabase has it; this is harmless if already on).
-create extension if not exists pgcrypto with schema extensions;
--- If mh_room_create says gen_random_bytes does not exist, change it to extensions.gen_random_bytes.
 
 -- Clean-up: delete room messages older than 7 days (run by hand now and then):
 -- delete from public.room_messages where created_at < now() - interval '7 days';
