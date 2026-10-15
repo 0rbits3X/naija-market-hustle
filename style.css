@@ -49,3 +49,6 @@ main{position:relative;z-index:1}
 #scene{max-width:520px;height:190px;margin:8px auto 0;border-radius:16px;overflow:hidden;background:linear-gradient(#9fd8ff,#eaf7ff);box-shadow:0 6px 0 var(--line),0 12px 18px rgba(0,0,0,.12);position:relative;z-index:1}
 #scene canvas{width:100%!important;height:100%!important;display:block}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]) #scene{background:linear-gradient(#17304a,#0f1a13)}}
+
+.acct{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:14px;font-size:.9rem}
+.acct .go{margin-top:8px}

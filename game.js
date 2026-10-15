@@ -26,7 +26,7 @@ function money(n){return "₦"+Math.round(n).toLocaleString("en-NG")}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function H(auth){var h={"apikey":SB_KEY,"Content-Type":"application/json"};h["Authorization"]="Bearer "+((auth&&AUTH)?AUTH.t:SB_KEY);return h}
 /* ---- accounts (anonymous sign-in: no email needed) ---- */
-function authSave(j){AUTH={t:j.access_token,r:j.refresh_token,id:j.user.id,exp:Date.now()+(j.expires_in-60)*1000};try{localStorage.setItem("mh_auth",JSON.stringify(AUTH))}catch(e){}}
+function authSave(j){AUTH={anon:!!(j.user&&j.user.is_anonymous),t:j.access_token,r:j.refresh_token,id:j.user.id,exp:Date.now()+(j.expires_in-60)*1000};try{localStorage.setItem("mh_auth",JSON.stringify(AUTH))}catch(e){}}
 function ensureAuth(){
  if(!sbOn())return Promise.reject();
  if(AUTH&&AUTH.exp>Date.now())return Promise.resolve();
@@ -35,6 +35,29 @@ function ensureAuth(){
  if(AUTH&&AUTH.r)return go(true).catch(function(){AUTH=null;try{localStorage.removeItem("mh_auth")}catch(e){}return go(false)});
  return go(false)}
 try{AUTH=JSON.parse(localStorage.getItem("mh_auth")||"null")}catch(e){AUTH=null}
+/* ---- Google sign-in (links your anonymous account so progress is never lost) ---- */
+function backUrl(){return encodeURIComponent(location.origin+location.pathname)}
+function gLink(){ensureAuth().then(function(){return fetch(SB_URL+"/auth/v1/user/identities/authorize?provider=google&redirect_to="+backUrl(),{headers:H(1)})})
+ .then(function(r){return r.json()}).then(function(j){if(j&&j.url){location.href=j.url}else throw 0})
+ .catch(function(){alert("Google linking is not switched on yet. In Supabase, enable the Google provider and turn on Allow manual linking.")})}
+function gSign(){try{localStorage.setItem("mh_restore","1")}catch(e){}location.href=SB_URL+"/auth/v1/authorize?provider=google&redirect_to="+backUrl()}
+function signOut(){if(!confirm("Sign out? Your progress stays saved in your Google account."))return;
+ try{["mh_auth","mh_save","mh_name","mh_restore"].forEach(function(k){localStorage.removeItem(k)})}catch(e){}location.reload()}
+function hashLogin(){
+ var h=location.hash||"",q=h+"&"+(location.search||"");
+ if(/error_description=/.test(q)){var m=decodeURIComponent((q.match(/error_description=([^&]+)/)||[])[1]||"").replace(/\+/g," ");
+  history.replaceState(null,"",location.pathname);
+  alert(/already|identity/i.test(m)?"That Google account already has a game. Tap 'I already have an account' to open it.":"Google sign-in failed: "+m);return Promise.resolve(false)}
+ if(h.indexOf("access_token=")<0)return Promise.resolve(false);
+ var p=new URLSearchParams(h.slice(1)),tok=p.get("access_token");
+ history.replaceState(null,"",location.pathname+(location.search||""));
+ return fetch(SB_URL+"/auth/v1/user",{headers:{"apikey":SB_KEY,"Authorization":"Bearer "+tok}})
+  .then(function(r){if(!r.ok)throw 0;return r.json()})
+  .then(function(u){authSave({access_token:tok,refresh_token:p.get("refresh_token"),expires_in:+p.get("expires_in")||3600,user:u});return true})
+  .catch(function(){alert("Google sign-in did not finish. Please try again.");return false})}
+function acctHtml(){if(!sbOn())return "";
+ if(AUTH&&AUTH.anon===false)return '<div class="acct">✅ Your progress is saved with Google.<button class="s" data-a="signout">Sign out</button></div>';
+ return '<div class="acct"><b>Do not lose your progress.</b> Link Google to keep your business if you clear your browser or change phone.<button class="go" data-a="glink">Save with Google</button><button class="go" data-a="gsign" style="background:transparent;color:var(--fg);border:2px solid var(--line)">I already have an account</button></div>'}
 /* ---- game state ---- */
 function roll(){var p={};ITEMS.forEach(function(i){p[i.id]=Math.max(100,Math.round(i.b*(1+(Math.random()*2-1)*i.v)/50)*50)});return p}
 function count(){return ITEMS.reduce(function(a,i){return a+S.inv[i.id]},0)}
@@ -47,11 +70,11 @@ function saveLocal(){try{localStorage.setItem("mh_save",JSON.stringify(snap()))}
 function saveCloud(){if(!sbOn()||!NAME)return;
  ensureAuth().then(function(){var h=H(1);h["Prefer"]="resolution=merge-duplicates,return=minimal";
   return fetch(SB_URL+"/rest/v1/players?on_conflict=id",{method:"POST",headers:h,body:JSON.stringify({id:AUTH.id,name:NAME,best:Math.round(S.best),tier:S.tier,save:snap(),updated_at:new Date().toISOString()})})}).catch(function(){})}
-function loadCloud(){if(!sbOn())return;
+function loadCloud(force){if(!sbOn())return;
  ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/players?id=eq."+AUTH.id+"&select=name,save",{headers:H(1)})})
  .then(function(r){return r.json()}).then(function(rows){var p=rows&&rows[0];if(!p||!p.save)return;
   if(!NAME&&p.name){NAME=p.name;try{localStorage.setItem("mh_name",NAME)}catch(e){}}
-  if(p.save.day>S.day){applySave(p.save);saveLocal()}render()}).catch(function(){})}
+  if(force||p.save.day>S.day){applySave(p.save);saveLocal()}render()}).catch(function(){})}
 function buy(id,q){var p=S.prices[id];q=Math.min(q,Math.floor(S.cash/p),TIERS[S.tier].cap-count());if(q>0){S.cash-=q*p;S.inv[id]+=q}render()}
 function sell(id,q){q=Math.min(q,S.inv[id]);if(q>0){S.cash+=q*S.prices[id];S.inv[id]-=q}render()}
 function next(){
@@ -96,7 +119,7 @@ function gameHtml(){
   '<button data-a="b" data-i="'+i.id+'" data-q="1">Buy 1</button><button data-a="b" data-i="'+i.id+'" data-q="99999">Buy max</button>'+
   '<button class="s" data-a="s" data-i="'+i.id+'" data-q="1">Sell 1</button><button class="s" data-a="s" data-i="'+i.id+'" data-q="99999">Sell all</button></div></div>'});
  h+='<button class="go" data-a="next">Next day (fee '+money(T.fee)+')</button><button class="go" data-a="share" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Share my progress</button>';
- h+='<p class="note">Playing as '+esc(NAME)+'. Best net worth: '+money(S.best)+'. Naira here is pretend money and cannot be withdrawn.</p>';
+ h+=acctHtml();h+='<p class="note">Playing as '+esc(NAME)+'. Best net worth: '+money(S.best)+'. Naira here is pretend money and cannot be withdrawn.</p>';
  return h}
 function boardHtml(){if(!sbOn())return '<p class="sub">The leaderboard needs your Supabase keys in config.js.</p>';
  var h='<h2 style="margin:8px 0">🏆 Top traders</h2>';
@@ -115,8 +138,10 @@ document.getElementById("app").addEventListener("click",function(e){
  if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
  else if(a=="next")next();else if(a=="share")share();else if(a=="send")sendChat();
  else if(a=="start"){var v=((document.getElementById("nm")||{}).value||"").trim().slice(0,14);if(!v){alert("Please type a name.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
+ else if(a=="glink")gLink();else if(a=="gsign")gSign();else if(a=="signout")signOut();
  else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}});
 document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat();if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
 newGame();
 try{var sv=JSON.parse(localStorage.getItem("mh_save")||"null");if(sv&&sv.day)applySave(sv)}catch(e){}
-render();loadCloud();loadLB();
+render();
+hashLogin().then(function(ok){var f=false;try{f=ok&&localStorage.getItem("mh_restore")=="1";localStorage.removeItem("mh_restore")}catch(e){}loadCloud(f);loadLB()});
