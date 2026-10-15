@@ -1,4 +1,10 @@
-var MAX=30,CAP=60,START=20000,FEE=1000;
+var TIERS=[
+{n:"Roadside hawker",e:"🧺",need:0,cap:12,fee:150,lev:2000},
+{n:"Market stall",e:"🛒",need:40000,cap:35,fee:600,lev:5000},
+{n:"Shop owner",e:"🏪",need:150000,cap:100,fee:2000,lev:15000},
+{n:"Wholesaler",e:"🚚",need:600000,cap:250,fee:6000,lev:40000},
+{n:"Business tycoon",e:"🏢",need:2500000,cap:700,fee:18000,lev:100000}];
+var START=8;
 var ITEMS=[
 {id:"tom",n:"Tomatoes",e:"🍅",b:800,v:.45},
 {id:"rice",n:"Rice (bag)",e:"🍚",b:2500,v:.3},
@@ -10,98 +16,107 @@ var EVENTS=[
 {t:"Sallah is near: everyone wants rice and yam.",f:{rice:1.6,yam:1.3}},
 {t:"Trucks from Benue arrived early. Yam is cheap today.",f:{yam:.6}},
 {t:"Power cut in Wuse: fish is cheap, sell what you can.",f:{fish:.6}},
-{t:"FCT task force levy: you paid ₦2,000.",fee:2000},
-{t:"Gridlock on Airport Road: pepper and tomatoes are late and pricey.",f:{pep:1.5,tom:1.4}}];
-var tab="game",S,best=0,LB=null,UID=null,TOP=[],saved=false,NAME="";
-try{NAME=localStorage.getItem("mh_name")||""}catch(e){}
-try{best=+localStorage.getItem("mh_best")||0}catch(e){}
+{t:"Gridlock on Airport Road: pepper and tomatoes are late and pricey.",f:{pep:1.5,tom:1.4}},
+{t:"FCT task force levy!",lev:1}];
 var SB_URL=(window.CFG&&CFG.url)||"",SB_KEY=(window.CFG&&CFG.key)||"";
+var tab="game",S,TOP=[],NAME="",AUTH=null;
+try{NAME=localStorage.getItem("mh_name")||""}catch(e){}
 function sbOn(){return SB_URL.indexOf("http")==0&&SB_KEY.length>20}
-function sbH(){return{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY,"Content-Type":"application/json"}}
-function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function loadLB(){if(!sbOn())return;
- fetch(SB_URL+"/rest/v1/scores?select=name,score&order=score.desc&limit=10",{headers:sbH()})
- .then(function(r){return r.json()}).then(function(rows){if(Array.isArray(rows)){TOP=rows;if(tab=="board"||(S&&S.over))render()}}).catch(function(){})}
-function saveScore(){var el=document.getElementById("nm"),n=((el&&el.value)||"").trim().slice(0,14)||"Trader",w=Math.round(worth());
- NAME=n;try{localStorage.setItem("mh_name",n)}catch(e){}
- var h=sbH();h["Prefer"]="return=minimal";
- fetch(SB_URL+"/rest/v1/scores",{method:"POST",headers:h,body:JSON.stringify({name:n,score:w})})
- .then(function(r){if(!r.ok)throw 0;saved=true;loadLB();render()})
- .catch(function(){alert("Could not save your score. Check your connection and try again.")})}
-function lbHtml(){if(!sbOn())return "";
- var h='<div style="text-align:left;margin:16px 0">';
- if(!saved)h+='<input id="nm" maxlength="14" placeholder="Your name" value="'+esc(NAME)+'" style="width:100%;padding:12px;border-radius:9px;border:2px solid var(--line);background:var(--card);color:var(--fg);font:inherit"><button class="go" data-a="save">Save to leaderboard</button>';
- h+='<h3 style="margin:16px 0 6px">Top traders</h3>';
- if(!TOP.length)h+='<p class="sub">No scores yet. Be the first!</p>';
- TOP.forEach(function(t,i){h+='<div class="item" style="grid-template-columns:auto 1fr auto"><b>'+(i+1)+'</b><span>'+esc(t.name)+'</span><b>'+money(t.score)+'</b></div>'});
- return h+'</div>'}
-if(sbOn())loadLB();
-function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
-function boardHtml(){if(!sbOn())return '<p class="sub">The leaderboard needs your Supabase keys. Add them in the file, then it will show here.</p>';
- var h='<h2 style="margin:8px 0">🏆 Top traders</h2>';
- if(!TOP.length)h+='<p class="sub">No scores yet. Finish a game to be the first!</p>';
- TOP.forEach(function(t,i){h+='<div class="item" style="grid-template-columns:auto 1fr auto"><b>'+(i+1)+'</b><span>'+esc(t.name)+'</span><b>'+money(t.score)+'</b></div>'});
- return h}
-function chatHtml(){if(!sbOn())return '<p class="sub">Chat needs your Supabase keys. Add them in the file, then it will show here.</p>';
- return '<div id="msgs" class="msgs"></div><div class="row"><input id="cn" maxlength="14" placeholder="Name" value="'+esc(NAME)+'"><input id="ct" maxlength="200" placeholder="Say something..."></div><button class="go" data-a="send">Send</button><p class="note">Be kind. No links or personal info.</p>'}
-function loadChat(){if(!sbOn()||tab!="chat")return;
- fetch(SB_URL+"/rest/v1/messages?select=name,body&order=created_at.desc&limit=40",{headers:sbH()})
- .then(function(r){return r.json()}).then(function(rows){var m=document.getElementById("msgs");if(!m||!Array.isArray(rows))return;
-  m.innerHTML=rows.reverse().map(function(x){return '<div class="msg"><b>'+esc(x.name)+'</b> '+esc(x.body)+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
-function sendChat(){var t=document.getElementById("ct"),n=document.getElementById("cn"),txt=((t&&t.value)||"").trim().slice(0,200),nm=((n&&n.value)||"").trim().slice(0,14)||"Trader";
- if(!txt)return;if(/https?:|www\.|\.com/i.test(txt)){alert("Links are not allowed in chat.");return}
- NAME=nm;try{localStorage.setItem("mh_name",nm)}catch(e){}
- var h=sbH();h["Prefer"]="return=minimal";
- fetch(SB_URL+"/rest/v1/messages",{method:"POST",headers:h,body:JSON.stringify({name:nm,body:txt})}).then(function(r){if(!r.ok)throw 0;t.value="";loadChat()}).catch(function(){alert("Message not sent. Try again.")})}
-setInterval(loadChat,4000);
-function render(){var a=document.getElementById("app");
- a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():gameHtml());
- if(tab=="chat")loadChat();if(window.mh3d&&S)mh3d.update(S.inv)}
 function money(n){return "₦"+Math.round(n).toLocaleString("en-NG")}
-function roll(){
-  var p={};ITEMS.forEach(function(i){p[i.id]=Math.max(100,Math.round(i.b*(1+(Math.random()*2-1)*i.v)/50)*50)});
-  return p}
-function newGame(){S={day:1,cash:START,inv:{},prev:null,ev:"Welcome to Wuse Market! Buy low, sell high. You have 30 days to build your stall.",prices:roll(),over:false};
-  ITEMS.forEach(function(i){S.inv[i.id]=0});render()}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function H(auth){var h={"apikey":SB_KEY,"Content-Type":"application/json"};h["Authorization"]="Bearer "+((auth&&AUTH)?AUTH.t:SB_KEY);return h}
+/* ---- accounts (anonymous sign-in: no email needed) ---- */
+function authSave(j){AUTH={t:j.access_token,r:j.refresh_token,id:j.user.id,exp:Date.now()+(j.expires_in-60)*1000};try{localStorage.setItem("mh_auth",JSON.stringify(AUTH))}catch(e){}}
+function ensureAuth(){
+ if(!sbOn())return Promise.reject();
+ if(AUTH&&AUTH.exp>Date.now())return Promise.resolve();
+ function go(ref){return fetch(SB_URL+(ref?"/auth/v1/token?grant_type=refresh_token":"/auth/v1/signup"),{method:"POST",headers:H(),body:JSON.stringify(ref?{refresh_token:AUTH.r}:{})})
+  .then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(j){if(!j.access_token||!j.user)throw 0;authSave(j)})}
+ if(AUTH&&AUTH.r)return go(true).catch(function(){AUTH=null;try{localStorage.removeItem("mh_auth")}catch(e){}return go(false)});
+ return go(false)}
+try{AUTH=JSON.parse(localStorage.getItem("mh_auth")||"null")}catch(e){AUTH=null}
+/* ---- game state ---- */
+function roll(){var p={};ITEMS.forEach(function(i){p[i.id]=Math.max(100,Math.round(i.b*(1+(Math.random()*2-1)*i.v)/50)*50)});return p}
 function count(){return ITEMS.reduce(function(a,i){return a+S.inv[i.id]},0)}
 function worth(){return S.cash+ITEMS.reduce(function(a,i){return a+S.inv[i.id]*S.prices[i.id]},0)}
-function buy(id,q){var p=S.prices[id];q=Math.min(q,Math.floor(S.cash/p),CAP-count());if(q>0){S.cash-=q*p;S.inv[id]+=q}render()}
+function snap(){return{day:S.day,cash:Math.round(S.cash),inv:S.inv,tier:S.tier,best:Math.round(S.best)}}
+function applySave(o){S.day=o.day;S.cash=o.cash;S.inv=o.inv;S.tier=o.tier;S.best=o.best||0;S.prices=roll();S.prev=null;S.ev="Welcome back to your business!"}
+function newGame(){S={day:1,cash:START*1000,inv:{},tier:0,best:0,prev:null,prices:roll(),ev:"You start as a roadside hawker. Buy low, sell high, and grow your business!"};
+  ITEMS.forEach(function(i){S.inv[i.id]=0})}
+function saveLocal(){try{localStorage.setItem("mh_save",JSON.stringify(snap()))}catch(e){}}
+function saveCloud(){if(!sbOn()||!NAME)return;
+ ensureAuth().then(function(){var h=H(1);h["Prefer"]="resolution=merge-duplicates,return=minimal";
+  return fetch(SB_URL+"/rest/v1/players?on_conflict=id",{method:"POST",headers:h,body:JSON.stringify({id:AUTH.id,name:NAME,best:Math.round(S.best),tier:S.tier,save:snap(),updated_at:new Date().toISOString()})})}).catch(function(){})}
+function loadCloud(){if(!sbOn())return;
+ ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/players?id=eq."+AUTH.id+"&select=name,save",{headers:H(1)})})
+ .then(function(r){return r.json()}).then(function(rows){var p=rows&&rows[0];if(!p||!p.save)return;
+  if(!NAME&&p.name){NAME=p.name;try{localStorage.setItem("mh_name",NAME)}catch(e){}}
+  if(p.save.day>S.day){applySave(p.save);saveLocal()}render()}).catch(function(){})}
+function buy(id,q){var p=S.prices[id];q=Math.min(q,Math.floor(S.cash/p),TIERS[S.tier].cap-count());if(q>0){S.cash-=q*p;S.inv[id]+=q}render()}
 function sell(id,q){q=Math.min(q,S.inv[id]);if(q>0){S.cash+=q*S.prices[id];S.inv[id]-=q}render()}
 function next(){
-  S.prev=S.prices;S.prices=roll();S.ev="";
-  S.cash-=Math.min(S.cash,FEE);
-  if(Math.random()<.4){var e=EVENTS[Math.floor(Math.random()*EVENTS.length)];S.ev=e.t;
-    if(e.f)for(var k in e.f)S.prices[k]=Math.round(S.prices[k]*e.f[k]/50)*50;
-    if(e.fee)S.cash-=Math.min(S.cash,e.fee)}
-  S.day++;
-  if(S.day>MAX){S.over=true;loadLB();var w=worth();if(w>best){best=w;try{localStorage.setItem("mh_best",String(Math.round(w)))}catch(x){}}}
-  render()}
-function title(w){return w<20000?"Market wahala":w<40000?"Small hustler":w<80000?"Market boss":"Oga of Wuse Market"}
-function share(){
-  var w=Math.round(worth()),t="I finished Naija Market Hustle with "+money(w)+" ("+title(w)+"). Can you beat me?";
-  if(navigator.share){navigator.share({text:t,url:location.href}).catch(function(){})}
-  else if(navigator.clipboard){navigator.clipboard.writeText(t+" "+location.href).then(function(){alert("Copied! Paste it to your friends.")}).catch(function(){})}}
-function gameHtml(){var h="";
-  if(S.over){var w=Math.round(worth());
-    h='<div class="end"><div class="sub">Day '+MAX+' complete</div><h2>'+title(w)+'</h2><div class="big">'+money(w)+'</div><p class="sub">Best score: '+money(best)+'</p>'+lbHtml()+'<button class="go" data-a="share">Share my score</button><button class="go s" data-a="again" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Play again</button></div>';
-  }else{
-    h='<div class="top"><div><h1>Naija Market Hustle</h1><div class="sub">Day '+S.day+' of '+MAX+' · stall space '+count()+'/'+CAP+'</div></div><div class="cash">'+money(S.cash)+'</div></div>';
-    h+='<div class="bar"><i style="width:'+((S.day-1)/MAX*100)+'%"></i></div>';
-    if(S.ev)h+='<div class="ev">'+S.ev+'</div>';
-    ITEMS.forEach(function(i){
-      var p=S.prices[i.id],d="";
-      if(S.prev){var c=p-S.prev[i.id];d=c>0?' <span class="up">▲ '+c+'</span>':c<0?' <span class="dn">▼ '+(-c)+'</span>':""}
-      h+='<div class="item"><div><div class="nm"><span class="em">'+i.e+'</span> '+i.n+'</div><div class="own">You have '+S.inv[i.id]+'</div></div><div class="pr">'+money(p)+d+'</div><div class="btns">'+
-      '<button data-a="b" data-i="'+i.id+'" data-q="1">Buy 1</button>'+
-      '<button data-a="b" data-i="'+i.id+'" data-q="10">Buy 10</button>'+
-      '<button class="s" data-a="s" data-i="'+i.id+'" data-q="1">Sell 1</button>'+
-      '<button class="s" data-a="s" data-i="'+i.id+'" data-q="999">Sell all</button></div></div>'});
-    h+='<button class="go" data-a="next">'+(S.day==MAX?"Finish the month":"Next day (stall fee "+money(FEE)+")")+'</button>';
-    h+='<p class="note">Best score: '+money(best)+'. Naira in this game is pretend money and cannot be withdrawn.</p>'}
-  return h}
+ var T=TIERS[S.tier];S.prev=S.prices;S.prices=roll();S.ev="";
+ S.cash-=Math.min(S.cash,T.fee);
+ if(Math.random()<.4){var e=EVENTS[Math.floor(Math.random()*EVENTS.length)];S.ev=e.t;
+  if(e.f)for(var k in e.f)S.prices[k]=Math.round(S.prices[k]*e.f[k]/50)*50;
+  if(e.lev){S.cash-=Math.min(S.cash,T.lev);S.ev+=" You paid "+money(T.lev)+"."}}
+ S.day++;
+ if(S.cash<500&&count()==0){S.cash+=3000;S.ev="A relative lent you ₦3,000 to restart your hustle."}
+ var w=worth();if(w>S.best)S.best=w;
+ while(S.tier<TIERS.length-1&&w>=TIERS[S.tier+1].need){S.tier++;S.ev="🎉 Promoted! You are now a "+TIERS[S.tier].n+" "+TIERS[S.tier].e+". More stall space, higher costs."}
+ saveLocal();saveCloud();render()}
+function share(){var t="I'm a "+TIERS[S.tier].n+" "+TIERS[S.tier].e+" in Naija Market Hustle with "+money(worth())+" on day "+S.day+". Can you beat me?";
+ if(navigator.share){navigator.share({text:t,url:location.href}).catch(function(){})}
+ else if(navigator.clipboard){navigator.clipboard.writeText(t+" "+location.href).then(function(){alert("Copied! Paste it to your friends.")}).catch(function(){})}}
+/* ---- leaderboard + chat ---- */
+function loadLB(){if(!sbOn())return;
+ fetch(SB_URL+"/rest/v1/players?select=name,best,tier&best=gt.0&order=best.desc&limit=20",{headers:H()})
+ .then(function(r){return r.json()}).then(function(rows){if(Array.isArray(rows)){TOP=rows;if(tab=="board")render()}}).catch(function(){})}
+function loadChat(){if(!sbOn()||tab!="chat")return;
+ fetch(SB_URL+"/rest/v1/messages?select=name,body&order=created_at.desc&limit=40",{headers:H()})
+ .then(function(r){return r.json()}).then(function(rows){var m=document.getElementById("msgs");if(!m||!Array.isArray(rows))return;
+  m.innerHTML=rows.reverse().map(function(x){return '<div class="msg"><b>'+esc(x.name)+'</b> '+esc(x.body)+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
+function sendChat(){var t=document.getElementById("ct"),txt=((t&&t.value)||"").trim().slice(0,200);
+ if(!txt||!NAME)return;if(/https?:|www\.|\.com/i.test(txt)){alert("Links are not allowed in chat.");return}
+ ensureAuth().then(function(){var h=H(1);h["Prefer"]="return=minimal";
+  return fetch(SB_URL+"/rest/v1/messages",{method:"POST",headers:h,body:JSON.stringify({name:NAME,body:txt})})})
+ .then(function(r){if(!r.ok)throw 0;t.value="";loadChat()}).catch(function(){alert("Message not sent. Try again.")})}
+setInterval(loadChat,4000);
+/* ---- screens ---- */
+function nameHtml(){return '<div class="end"><div class="big">🧺</div><h2>Welcome, trader!</h2><p class="sub">Pick a name. Your progress is saved to your account, so you can come back anytime.</p><div class="row"><input id="nm" maxlength="14" placeholder="Your trader name"></div><button class="go" data-a="start">Start hustling</button></div>'}
+function gameHtml(){
+ if(!NAME)return nameHtml();
+ var T=TIERS[S.tier],N=TIERS[S.tier+1],w=worth(),h='<div class="top"><div><h1>'+T.e+' '+T.n+'</h1><div class="sub">Day '+S.day+' · stall space '+count()+'/'+T.cap+'</div></div><div class="cash">'+money(S.cash)+'</div></div>';
+ if(N){var pc=Math.max(0,Math.min(100,(w-T.need)/(N.need-T.need)*100));h+='<div class="bar"><i style="width:'+pc+'%"></i></div><div class="sub">Next: '+N.e+' '+N.n+' at '+money(N.need)+' net worth (you have '+money(w)+')</div>'}
+ else h+='<div class="bar"><i style="width:100%"></i></div><div class="sub">Top rank reached! Net worth '+money(w)+'</div>';
+ if(S.ev)h+='<div class="ev">'+S.ev+'</div>';
+ ITEMS.forEach(function(i){var p=S.prices[i.id],d="";
+  if(S.prev){var c=p-S.prev[i.id];d=c>0?' <span class="up">▲ '+c+'</span>':c<0?' <span class="dn">▼ '+(-c)+'</span>':""}
+  h+='<div class="item"><div><div class="nm"><span class="em">'+i.e+'</span> '+i.n+'</div><div class="own">You have '+S.inv[i.id]+'</div></div><div class="pr">'+money(p)+d+'</div><div class="btns">'+
+  '<button data-a="b" data-i="'+i.id+'" data-q="1">Buy 1</button><button data-a="b" data-i="'+i.id+'" data-q="99999">Buy max</button>'+
+  '<button class="s" data-a="s" data-i="'+i.id+'" data-q="1">Sell 1</button><button class="s" data-a="s" data-i="'+i.id+'" data-q="99999">Sell all</button></div></div>'});
+ h+='<button class="go" data-a="next">Next day (fee '+money(T.fee)+')</button><button class="go" data-a="share" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Share my progress</button>';
+ h+='<p class="note">Playing as '+esc(NAME)+'. Best net worth: '+money(S.best)+'. Naira here is pretend money and cannot be withdrawn.</p>';
+ return h}
+function boardHtml(){if(!sbOn())return '<p class="sub">The leaderboard needs your Supabase keys in config.js.</p>';
+ var h='<h2 style="margin:8px 0">🏆 Top traders</h2>';
+ if(!TOP.length)h+='<p class="sub">No players yet. Play a few days to appear here!</p>';
+ TOP.forEach(function(t,i){h+='<div class="item" style="grid-template-columns:auto 1fr auto"><b>'+(i+1)+'</b><span>'+(TIERS[t.tier]?TIERS[t.tier].e:"")+' '+esc(t.name)+'</span><b>'+money(t.best)+'</b></div>'});
+ return h}
+function chatHtml(){if(!sbOn())return '<p class="sub">Chat needs your Supabase keys in config.js.</p>';
+ if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
+ return '<div id="msgs" class="msgs"></div><div class="row"><input id="ct" maxlength="200" placeholder="Say something as '+esc(NAME)+'..."></div><button class="go" data-a="send">Send</button><p class="note">Be kind. No links or personal info.</p>'}
+function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
+function render(){var a=document.getElementById("app");
+ a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():gameHtml());
+ if(tab=="chat")loadChat();if(window.mh3d&&S)mh3d.update(S.inv,TIERS[S.tier].cap/2)}
 document.getElementById("app").addEventListener("click",function(e){
-  var b=e.target.closest("button");if(!b)return;var a=b.dataset.a;
-  if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
-  else if(a=="next")next();else if(a=="again"){saved=false;newGame()}else if(a=="save")saveScore();else if(a=="send")sendChat();else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}else if(a=="share")share()});
-document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"&&e.target.id=="ct")sendChat()});
+ var b=e.target.closest("button");if(!b)return;var a=b.dataset.a;
+ if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
+ else if(a=="next")next();else if(a=="share")share();else if(a=="send")sendChat();
+ else if(a=="start"){var v=((document.getElementById("nm")||{}).value||"").trim().slice(0,14);if(!v){alert("Please type a name.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
+ else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}});
+document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat();if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
 newGame();
+try{var sv=JSON.parse(localStorage.getItem("mh_save")||"null");if(sv&&sv.day)applySave(sv)}catch(e){}
+render();loadCloud();loadLB();

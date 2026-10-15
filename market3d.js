@@ -19,7 +19,7 @@ for(var k=0;k<5;k++){crates.push(box(1.1,.5,1.1,cols[k],-3.2+k*1.6,1.05,0))}
 var coin=new THREE.Mesh(new THREE.CylinderGeometry(.5,.5,.12,24),new THREE.MeshLambertMaterial({color:0xf0b323}));
 coin.rotation.x=Math.PI/2;coin.position.set(5.2,2.2,0);sc.add(coin);
 var target=[.5,.5,.5,.5,.5],still=window.matchMedia&&matchMedia("(prefers-reduced-motion:reduce)").matches;
-window.mh3d={update:function(inv){if(!inv)return;for(var k=0;k<5;k++)target[k]=.5+Math.min((inv[ids[k]]||0)/20,1)*1.4}};
+window.mh3d={update:function(inv,sc){if(!inv)return;sc=sc||20;for(var k=0;k<5;k++)target[k]=.5+Math.min((inv[ids[k]]||0)/sc,1)*1.4}};
 function tick(t){
  requestAnimationFrame(tick);if(document.hidden)return;
  t*=.001;
