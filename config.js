@@ -1,0 +1,3 @@
+
+window.CFG={url:"https://lovdmkgsdlxcjgkakpaf.supabase.co",key:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxvdmRta2dzZGx4Y2pna2FrcGFmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwMDUyMTQsImV4cCI6MjEwNzU4MTIxNH0.3JmTeC2feOT3m-SZfLSj0q_JoR1tnsxQwwQX4lgWI00"};
+
