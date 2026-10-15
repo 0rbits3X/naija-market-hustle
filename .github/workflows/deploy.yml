@@ -1,0 +1,65 @@
+name: Unzip upload and deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: site
+  cancel-in-progress: false
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip the newest zip in uploads/
+        run: |
+          set -e
+          ZIP=$(ls -t uploads/*.zip 2>/dev/null | head -n1 || true)
+          if [ -z "$ZIP" ]; then echo "No zip to unpack."; exit 0; fi
+          rm -rf /tmp/pkg && mkdir /tmp/pkg
+          unzip -q "$ZIP" -d /tmp/pkg
+          # If the zip has one top-level folder, use what is inside it
+          if [ "$(ls -A /tmp/pkg | wc -l)" -eq 1 ] && [ -d "/tmp/pkg/$(ls /tmp/pkg)" ]; then
+            SRC="/tmp/pkg/$(ls /tmp/pkg)"
+          else
+            SRC=/tmp/pkg
+          fi
+          # Never overwrite git data, workflows, your keys, or the uploads folder
+          rsync -a --exclude '.git' --exclude '.github' --exclude 'config.js' --exclude 'uploads' "$SRC"/ ./
+          rm -f uploads/*.zip
+
+      - name: Commit the update
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "No changes."; else
+            git commit -m "Update site from uploaded zip"
+            git push
+          fi
+
+  deploy:
+    needs: unpack
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.dep.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: dep
+        uses: actions/deploy-pages@v4
