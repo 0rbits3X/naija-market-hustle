@@ -170,18 +170,47 @@ function claimGifts(){return ensureAuth().then(function(){return fetch(SB_URL+"/
 function giftHtml(){if(!sbOn())return '<p class="sub">Gifts need online mode.</p>';
  if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
  return '<h2 style="margin:8px 0">🎁 Help a friend</h2><p class="sub">Your trader code: <b>'+esc(CODE||"(play one day to get it)")+'</b>. Share it only with friends you know.</p><div class="row"><input id="gc" maxlength="6" placeholder="Friend code" autocapitalize="characters"><input id="ga" type="number" inputmode="numeric" placeholder="Amount"></div><button class="go" data-a="gsend">Send gift</button><button class="go" data-a="gget" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Collect my gifts</button><p class="note">Gifts are small and limited each day. You need Market stall level to send. Naira here is pretend money and cannot be withdrawn.</p>'}
-function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"],["gift","🎁 Gifts"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
+/* ---- friends rooms: free text, private, join by 6-character code ---- */
+var ROOMS=[],CUR="",rTimer=null;
+var RERR={links:"Links are not allowed.",phone:"Phone numbers are not allowed.",contact:"Do not share contacts. Keep chat in the game.",rude:"Please keep it clean and kind.",slow_mode:"Small small! Wait a moment.",empty:"Type something first.",not_member:"You are not in this room.",login:"Try again in a moment.",too_many_rooms:"You have too many rooms. Leave one first.",no_room:"No room has that code.",full:"That room is full (20 people).",try_again:"Try again."};
+function rpc(fn,args){return ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/rpc/"+fn,{method:"POST",headers:H(1),body:JSON.stringify(args||{})})}).then(function(r){return r.json().catch(function(){return null}).then(function(j){if(!r.ok)throw(j&&j.message)||"fail";return j})})}
+function rGet(path){return ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/"+path,{headers:H(1)})}).then(function(r){if(!r.ok)throw 0;return r.json()})}
+function loadRooms(){if(!sbOn())return;rGet("room_members?select=room_code&order=joined_at.asc").then(function(a){ROOMS=a.map(function(x){return x.room_code});if(tab=="room"&&!CUR)render()}).catch(function(){})}
+function loadRoom(){if(!sbOn()||tab!="room"||!CUR)return;
+ rGet("room_messages?select=id,uid,name,body&room_code=eq."+encodeURIComponent(CUR)+"&order=created_at.desc&limit=50").then(function(rows){
+  var m=document.getElementById("rmsgs");if(!m||tab!="room")return;
+  m.innerHTML=rows.filter(function(x){return MUTED.indexOf(x.uid)<0&&!msgBad(x.body)}).reverse().map(function(x){var me=AUTH&&x.uid==AUTH.id;return '<div class="msg"><b>'+esc(shown(x.name))+'</b> '+esc(String(x.body).slice(0,200))+(me?'':' <button class="r" data-a="rmute" data-u="'+esc(x.uid)+'" aria-label="Mute">🔇</button>')+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
+function roomsHtml(){if(!sbOn())return '<p class="sub">Friends rooms need online mode.</p>';
+ if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
+ if(CUR)return '<h2 style="margin:8px 0">👥 Room '+esc(CUR)+'</h2><p class="sub">Share this code only with friends you know.</p><div id="rmsgs" class="msgs"></div><div class="row"><input id="rt" maxlength="200" placeholder="Say something..." autocomplete="off"><button class="go" data-a="rsay" style="width:auto;padding:0 16px">Send</button></div><button class="go" data-a="rback" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Back to my rooms</button><button class="go" data-a="rleave" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Leave this room</button><p class="note">No links, phone numbers or contacts. Tap 🔇 to hide someone. Leave the room if anyone is unkind and tell a parent or teacher.</p>';
+ return '<h2 style="margin:8px 0">👥 Friends rooms</h2><p class="sub">Chat freely with friends in a private room. Only people with the code can join.</p>'+(ROOMS.length?'<div class="locs">'+ROOMS.map(function(c){return '<button class="s" data-a="ropen" data-c="'+esc(c)+'">Room '+esc(c)+'</button>'}).join("")+'</div>':'<p class="sub">You are not in any room yet.</p>')+'<button class="go" data-a="rnew">Make a new room</button><div class="row"><input id="rj" maxlength="6" placeholder="Friend\'s room code" autocapitalize="characters"><button class="go" data-a="rjoin" style="width:auto;padding:0 16px">Join</button></div><p class="note">Rooms hold up to 20 people. Messages are deleted after a week.</p>'}
+function roomOpen(c){CUR=c;render()}
+function roomNew(){rpc("mh_room_create").then(function(c){if(ROOMS.indexOf(c)<0)ROOMS.push(c);roomOpen(c)}).catch(function(e){alert(RERR[e]||"Could not make a room. Try again.")})}
+function roomJoin(){var c=((document.getElementById("rj")||{}).value||"").trim().toUpperCase();
+ if(!/^[A-Z0-9]{6}$/.test(c)){alert("Type the 6-character room code.");return}
+ rpc("mh_room_join",{p_code:c}).then(function(res){if(res=="ok"){if(ROOMS.indexOf(c)<0)ROOMS.push(c);roomOpen(c)}else alert(RERR[res]||"Could not join.")}).catch(function(e){alert(RERR[e]||"Could not join. Check your network.")})}
+function roomLeave(){if(!CUR||!confirm("Leave this room?"))return;var c=CUR;
+ rpc("mh_room_leave",{p_code:c}).then(function(){ROOMS=ROOMS.filter(function(x){return x!=c});CUR="";render()}).catch(function(){alert("Could not leave. Try again.")})}
+var lastR=0;
+function roomSay(){var t=document.getElementById("rt"),txt=((t||{}).value||"").trim();if(!txt||!CUR)return;
+ var bad=msgBad(txt);if(bad){alert(bad);return}
+ if(sadWords(txt)){alert("We are sorry you feel this way. Please talk to a parent, teacher or someone you trust today.");return}
+ if(Date.now()-lastR<2000){alert("Small small! Wait a moment.");return}lastR=Date.now();
+ rpc("mh_room_say",{p_code:CUR,p_name:cleanName(NAME)||"Trader",p_body:txt}).then(function(){if(t)t.value="";loadRoom()}).catch(function(e){alert(RERR[e]||"Message not sent. Check your network.")})}
+function roomMute(u){if(!u||!confirm("Hide all messages from this player?"))return;MUTED.push(u);try{localStorage.setItem("mh_mute",JSON.stringify(MUTED))}catch(e){}loadRoom()}
+function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"],["room","👥 Friends"],["gift","🎁 Gifts"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
 function render(){var a=document.getElementById("app");
- a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():tab=="gift"?giftHtml():gameHtml());
- if(tab=="chat")loadChat();if(window.mh3d&&S)mh3d.update(S.inv,TIERS[S.tier].cap/2)}
+ clearInterval(rTimer);a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():tab=="room"?roomsHtml():tab=="gift"?giftHtml():gameHtml());
+ if(tab=="chat")loadChat();if(tab=="room"&&CUR){loadRoom();rTimer=setInterval(function(){if(!document.hidden)loadRoom()},7000)}if(window.mh3d&&S)mh3d.update(S.inv,TIERS[S.tier].cap/2)}
 document.getElementById("app").addEventListener("click",function(e){
  var b=e.target.closest("button");if(!b)return;var a=b.dataset.a;
  if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
  else if(a=="next")next();else if(a=="go")next(b.dataset.m);else if(a=="share")share();else if(a=="send")sendChat(+b.dataset.p);else if(a=="sendt")sendChat(-1);else if(a=="rep")reportMsg(b.dataset.id);else if(a=="mute")muteUser(b.dataset.u);
  else if(a=="start"){var v=cleanName((document.getElementById("nm")||{}).value);if(!v){alert("Use 2 to 14 letters or numbers, and keep it clean.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
+ else if(a=="rnew")roomNew();else if(a=="rjoin")roomJoin();else if(a=="ropen")roomOpen(b.dataset.c);else if(a=="rback"){CUR="";render()}else if(a=="rleave")roomLeave();else if(a=="rsay")roomSay();else if(a=="rmute")roomMute(b.dataset.u);
  else if(a=="gsend")sendGift();else if(a=="gget")claimGifts();else if(a=="glink")gLink();else if(a=="gsign")gSign();else if(a=="signout")signOut();
- else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}});
-document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat(-1);if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
+ else if(a=="tab"){tab=b.dataset.t;if(tab!="room")CUR="";render();if(tab=="board")loadLB();if(tab=="room")loadRooms()}});
+document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat(-1);if(e.target.id=="rt")roomSay();if(e.target.id=="rj")roomJoin();if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
 newGame();
 try{var sv=JSON.parse(localStorage.getItem("mh_save")||"null");if(sv&&sv.day)applySave(sv)}catch(e){}
 render();

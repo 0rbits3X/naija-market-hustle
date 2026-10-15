@@ -56,3 +56,4 @@ main{position:relative;z-index:1}
 .locs{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.locs .sub{flex:1 0 100%}.locs button{flex:1 0 30%;padding:8px 4px;font-size:.85rem}
 .s2d{height:100%;display:flex;align-items:flex-end;justify-content:center;gap:10px;font-size:2.2rem;padding-bottom:22px;background:repeating-linear-gradient(90deg,var(--green) 0 28px,var(--gold) 28px 56px) top/100% 44px no-repeat}
 .msg .r{flex:none;min-height:26px;padding:0 8px;margin-left:4px;background:transparent;color:var(--mute);border:1px solid var(--line);font-size:.72rem}
+.tabs button{padding-left:2px;padding-right:2px;font-size:.78rem}
