@@ -20,7 +20,23 @@ var EVENTS=[
 {t:"FCT task force levy!",lev:1}];
 var SB_URL=(window.CFG&&CFG.url)||"",SB_KEY=(window.CFG&&CFG.key)||"";
 var tab="game",S,TOP=[],NAME="",AUTH=null;
-try{NAME=localStorage.getItem("mh_name")||""}catch(e){}
+var PHR=["Good morning, oga! 👋","Fresh goods, come and buy! 🛒","Price don drop! 📉","Price don rise! 📈","Who wan trade? 🤝","Well done! 👏","I just got promoted! 🎉","Abeg, small discount?","Rain dey fall 🌧️","Market is busy today 🔥"];
+var MK=[{id:"wuse",n:"Wuse Market",t:0,m:{}},{id:"garki",n:"Garki Market",t:1,m:{rice:.85,fish:1.1}},{id:"utako",n:"Utako Market",t:2,m:{tom:1.15,pep:1.1,fish:.9}},{id:"kubwa",n:"Kubwa Market",t:2,m:{yam:.75,pep:.8,rice:1.15,fish:1.2}}];
+var BAD=/fuck|fvck|shit|bitch|dick|pussy|sex|porn|nude|rape|nigg|whore|asshole|ashawo|idiot|stupid/i;
+function cleanName(s){s=String(s||"").replace(/[^A-Za-z0-9 _.\-]/g,"").replace(/\s+/g," ").trim().slice(0,14);return(s.length<2||BAD.test(s.replace(/[ _.\-]/g,"")))?"":s}
+var MUTED=[],REPD={};try{MUTED=JSON.parse(localStorage.getItem("mh_mute")||"[]")}catch(e){}
+function msgBad(t){t=String(t||"");var l=t.toLowerCase();
+ if(/https?:|www\.|\.(com|ng|net|org|io|me|co|xyz)\b|t\.me|wa\.me|@/.test(l))return"Links and emails are not allowed.";
+ if(t.replace(/\D/g,"").length>=7)return"Phone numbers are not allowed.";
+ if(/\b(add me|dm me|inbox me|whatsapp|telegram|snapchat|snap|instagram|insta|tiktok|my number|call me)\b/.test(l))return"Do not share contacts. Keep chat in the game.";
+ if(/(fuck|shit|bitch|pussy|porn|nigg|whore|asshole|ashawo|rape|nude)/.test(l.replace(/0/g,"o").replace(/[1!]/g,"i").replace(/3/g,"e").replace(/[4@]/g,"a").replace(/[5$]/g,"s").replace(/[^a-z]/g,"")))return"Please keep it clean and kind.";
+ return""}
+function sadWords(t){return /kill myself|want to die|end my life|suicide|hurt myself/i.test(t)}
+function shown(s){return cleanName(s)||"Trader"}
+function mk(id){for(var i=0;i<MK.length;i++)if(MK[i].id==id)return MK[i];return MK[0]}
+function fareOf(){return 200+S.tier*300}
+function okSave(o){if(!o||typeof o!="object"||!(o.day>=1)||!(o.cash>=0)||o.cash>1e10||!(o.tier>=0&&o.tier<TIERS.length)||!o.inv)return false;var n=0;for(var j=0;j<ITEMS.length;j++){var q=o.inv[ITEMS[j].id];if(!(q>=0))return false;n+=q}return n<=TIERS[o.tier|0].cap}
+try{NAME=cleanName(localStorage.getItem("mh_name"))}catch(e){}
 function sbOn(){return SB_URL.indexOf("http")==0&&SB_KEY.length>20}
 function money(n){return "₦"+Math.round(n).toLocaleString("en-NG")}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
@@ -56,34 +72,39 @@ function hashLogin(){
   .then(function(u){authSave({access_token:tok,refresh_token:p.get("refresh_token"),expires_in:+p.get("expires_in")||3600,user:u});return true})
   .catch(function(){alert("Google sign-in did not finish. Please try again.");return false})}
 function acctHtml(){if(!sbOn())return "";
+ if(!(window.CFG&&CFG.google===true))return '<div class="acct">Your game saves on this phone and online. Clearing your browser can lose it.</div>';
  if(AUTH&&AUTH.anon===false)return '<div class="acct">✅ Your progress is saved with Google.<button class="s" data-a="signout">Sign out</button></div>';
  return '<div class="acct"><b>Do not lose your progress.</b> Link Google to keep your business if you clear your browser or change phone.<button class="go" data-a="glink">Save with Google</button><button class="go" data-a="gsign" style="background:transparent;color:var(--fg);border:2px solid var(--line)">I already have an account</button></div>'}
 /* ---- game state ---- */
-function roll(){var p={};ITEMS.forEach(function(i){p[i.id]=Math.max(100,Math.round(i.b*(1+(Math.random()*2-1)*i.v)/50)*50)});return p}
+function roll(loc){var p={},m=mk(loc||"wuse").m;ITEMS.forEach(function(i){p[i.id]=Math.max(100,Math.round(i.b*(m[i.id]||1)*(1+(Math.random()*2-1)*i.v)/50)*50)});return p}
 function count(){return ITEMS.reduce(function(a,i){return a+S.inv[i.id]},0)}
 function worth(){return S.cash+ITEMS.reduce(function(a,i){return a+S.inv[i.id]*S.prices[i.id]},0)}
-function snap(){return{day:S.day,cash:Math.round(S.cash),inv:S.inv,tier:S.tier,best:Math.round(S.best)}}
-function applySave(o){S.day=o.day;S.cash=o.cash;S.inv=o.inv;S.tier=o.tier;S.best=o.best||0;S.prices=roll();S.prev=null;S.ev="Welcome back to your business!"}
-function newGame(){S={day:1,cash:START*1000,inv:{},tier:0,best:0,prev:null,prices:roll(),ev:"You start as a roadside hawker. Buy low, sell high, and grow your business!"};
+function snap(){return{day:S.day,cash:Math.round(S.cash),inv:S.inv,tier:S.tier,best:Math.round(S.best),loc:S.loc}}
+function applySave(o){if(!okSave(o))return;S.loc=mk(o.loc).t<=o.tier?mk(o.loc).id:"wuse";S.day=o.day;S.cash=o.cash;S.inv=o.inv;S.tier=o.tier;S.best=o.best||0;S.prices=roll(S.loc);S.prev=null;S.ev="Welcome back to your business!"}
+function newGame(){S={day:1,cash:START*1000,inv:{},tier:0,best:0,prev:null,prices:roll("wuse"),loc:"wuse",ev:"You start as a roadside hawker. Buy low, sell high, and grow your business!"};
   ITEMS.forEach(function(i){S.inv[i.id]=0})}
 function saveLocal(){try{localStorage.setItem("mh_save",JSON.stringify(snap()))}catch(e){}}
-function saveCloud(){if(!sbOn()||!NAME)return;
+var sct;function saveCloud(){clearTimeout(sct);sct=setTimeout(doCloud,1500)}
+function doCloud(){if(!sbOn()||!NAME)return;
  ensureAuth().then(function(){var h=H(1);h["Prefer"]="resolution=merge-duplicates,return=minimal";
-  return fetch(SB_URL+"/rest/v1/players?on_conflict=id",{method:"POST",headers:h,body:JSON.stringify({id:AUTH.id,name:NAME,best:Math.round(S.best),tier:S.tier,save:snap(),updated_at:new Date().toISOString()})})}).catch(function(){})}
+  return fetch(SB_URL+"/rest/v1/players?on_conflict=id",{method:"POST",headers:h,body:JSON.stringify({id:AUTH.id,name:cleanName(NAME)||"Trader",best:Math.round(S.best),tier:S.tier,save:snap(),updated_at:new Date().toISOString()})})}).catch(function(){})}
 function loadCloud(force){if(!sbOn())return;
  ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/players?id=eq."+AUTH.id+"&select=name,save",{headers:H(1)})})
  .then(function(r){return r.json()}).then(function(rows){var p=rows&&rows[0];if(!p||!p.save)return;
-  if(!NAME&&p.name){NAME=p.name;try{localStorage.setItem("mh_name",NAME)}catch(e){}}
+  if(!NAME&&cleanName(p.name)){NAME=cleanName(p.name);try{localStorage.setItem("mh_name",NAME)}catch(e){}}
   if(force||p.save.day>S.day){applySave(p.save);saveLocal()}render()}).catch(function(){})}
 function buy(id,q){var p=S.prices[id];q=Math.min(q,Math.floor(S.cash/p),TIERS[S.tier].cap-count());if(q>0){S.cash-=q*p;S.inv[id]+=q}render()}
 function sell(id,q){q=Math.min(q,S.inv[id]);if(q>0){S.cash+=q*S.prices[id];S.inv[id]-=q}render()}
-function next(){
- var T=TIERS[S.tier];S.prev=S.prices;S.prices=roll();S.ev="";
+function next(dest){var T=TIERS[S.tier],pre="";
+ if(dest&&dest!=S.loc){var d=mk(dest),fare=fareOf();if(d.t>S.tier)return;if(S.cash<fare){S.ev="Not enough cash for the fare to "+d.n+".";render();return}
+  S.cash-=fare;S.loc=d.id;S.prev=null;pre="You reached "+d.n+". "}
+ else S.prev=S.prices;
+ S.prices=roll(S.loc);S.ev="";
  S.cash-=Math.min(S.cash,T.fee);
- if(Math.random()<.4){var e=EVENTS[Math.floor(Math.random()*EVENTS.length)];S.ev=e.t;
+ if(Math.random()<.4){var e=EVENTS[Math.floor(Math.random()*EVENTS.length)];S.ev=e.t.replace("Wuse",mk(S.loc).n.split(" ")[0]);
   if(e.f)for(var k in e.f)S.prices[k]=Math.round(S.prices[k]*e.f[k]/50)*50;
   if(e.lev){S.cash-=Math.min(S.cash,T.lev);S.ev+=" You paid "+money(T.lev)+"."}}
- S.day++;
+ S.day++;if(pre)S.ev=pre+S.ev;
  if(S.cash<500&&count()==0){S.cash+=3000;S.ev="A relative lent you ₦3,000 to restart your hustle."}
  var w=worth();if(w>S.best)S.best=w;
  while(S.tier<TIERS.length-1&&w>=TIERS[S.tier+1].need){S.tier++;S.ev="🎉 Promoted! You are now a "+TIERS[S.tier].n+" "+TIERS[S.tier].e+". More stall space, higher costs."}
@@ -96,20 +117,26 @@ function loadLB(){if(!sbOn())return;
  fetch(SB_URL+"/rest/v1/players?select=name,best,tier&best=gt.0&order=best.desc&limit=20",{headers:H()})
  .then(function(r){return r.json()}).then(function(rows){if(Array.isArray(rows)){TOP=rows;if(tab=="board")render()}}).catch(function(){})}
 function loadChat(){if(!sbOn()||tab!="chat")return;
- fetch(SB_URL+"/rest/v1/messages?select=name,body&order=created_at.desc&limit=40",{headers:H()})
+ fetch(SB_URL+"/rest/v1/messages?select=id,name,body,uid&hidden=eq.false&order=created_at.desc&limit=40",{headers:H()})
  .then(function(r){return r.json()}).then(function(rows){var m=document.getElementById("msgs");if(!m||!Array.isArray(rows))return;
-  m.innerHTML=rows.reverse().map(function(x){return '<div class="msg"><b>'+esc(x.name)+'</b> '+esc(x.body)+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
-function sendChat(){var t=document.getElementById("ct"),txt=((t&&t.value)||"").trim().slice(0,200);
- if(!txt||!NAME)return;if(/https?:|www\.|\.com/i.test(txt)){alert("Links are not allowed in chat.");return}
+  m.innerHTML=rows.filter(function(x){return !msgBad(x.body)&&MUTED.indexOf(x.uid)<0&&!REPD[x.id]}).reverse().map(function(x){var me=AUTH&&x.uid==AUTH.id;return '<div class="msg"><b>'+esc(shown(x.name))+'</b> '+esc(String(x.body).slice(0,100))+(me?'':' <button class="r" data-a="rep" data-id="'+esc(x.id)+'" aria-label="Report">⚑</button><button class="r" data-a="mute" data-u="'+esc(x.uid)+'" aria-label="Mute">🔇</button>')+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
+var lastC=0;
+function sendChat(i){var t=document.getElementById("ct"),txt=(i>=0?PHR[i]:((t&&t.value)||"")).trim().slice(0,100);if(!txt||!NAME)return;
+ var bad=msgBad(txt);if(bad){alert(bad);return}
+ if(sadWords(txt)){alert("We are sorry you feel this way. Please talk to a parent, teacher or someone you trust today.");return}
+ if(Date.now()-lastC<5000){alert("Small small! Wait a few seconds.");return}lastC=Date.now();
  ensureAuth().then(function(){var h=H(1);h["Prefer"]="return=minimal";
-  return fetch(SB_URL+"/rest/v1/messages",{method:"POST",headers:h,body:JSON.stringify({name:NAME,body:txt})})})
- .then(function(r){if(!r.ok)throw 0;t.value="";loadChat()}).catch(function(){alert("Message not sent. Try again.")})}
+  return fetch(SB_URL+"/rest/v1/messages",{method:"POST",headers:h,body:JSON.stringify({name:cleanName(NAME)||"Trader",body:txt})})})
+ .then(function(r){if(!r.ok)throw 0;if(t)t.value="";loadChat()}).catch(function(){alert("Message not sent. New players wait about 2 minutes, then try again.")})}
+function reportMsg(id){if(!id||!confirm("Report this message?"))return;REPD[id]=1;
+ ensureAuth().then(function(){var h=H(1);h["Prefer"]="return=minimal";return fetch(SB_URL+"/rest/v1/reports",{method:"POST",headers:h,body:JSON.stringify({message_id:String(id)})})}).catch(function(){});loadChat();alert("Thanks. We will check it.")}
+function muteUser(u){if(!u||!confirm("Hide all messages from this player?"))return;MUTED.push(u);try{localStorage.setItem("mh_mute",JSON.stringify(MUTED))}catch(e){}loadChat()}
 setInterval(loadChat,4000);
 /* ---- screens ---- */
 function nameHtml(){return '<div class="end"><div class="big">🧺</div><h2>Welcome, trader!</h2><p class="sub">Pick a name. Your progress is saved to your account, so you can come back anytime.</p><div class="row"><input id="nm" maxlength="14" placeholder="Your trader name"></div><button class="go" data-a="start">Start hustling</button></div>'}
 function gameHtml(){
  if(!NAME)return nameHtml();
- var T=TIERS[S.tier],N=TIERS[S.tier+1],w=worth(),h='<div class="top"><div><h1>'+T.e+' '+T.n+'</h1><div class="sub">Day '+S.day+' · stall space '+count()+'/'+T.cap+'</div></div><div class="cash">'+money(S.cash)+'</div></div>';
+ var T=TIERS[S.tier],N=TIERS[S.tier+1],w=worth(),h='<div class="top"><div><h1>'+T.e+' '+T.n+'</h1><div class="sub">Day '+S.day+' · '+mk(S.loc).n+' · space '+count()+'/'+T.cap+'</div></div><div class="cash">'+money(S.cash)+'</div></div>';
  if(N){var pc=Math.max(0,Math.min(100,(w-T.need)/(N.need-T.need)*100));h+='<div class="bar"><i style="width:'+pc+'%"></i></div><div class="sub">Next: '+N.e+' '+N.n+' at '+money(N.need)+' net worth (you have '+money(w)+')</div>'}
  else h+='<div class="bar"><i style="width:100%"></i></div><div class="sub">Top rank reached! Net worth '+money(w)+'</div>';
  if(S.ev)h+='<div class="ev">'+S.ev+'</div>';
@@ -118,17 +145,18 @@ function gameHtml(){
   h+='<div class="item"><div><div class="nm"><span class="em">'+i.e+'</span> '+i.n+'</div><div class="own">You have '+S.inv[i.id]+'</div></div><div class="pr">'+money(p)+d+'</div><div class="btns">'+
   '<button data-a="b" data-i="'+i.id+'" data-q="1">Buy 1</button><button data-a="b" data-i="'+i.id+'" data-q="99999">Buy max</button>'+
   '<button class="s" data-a="s" data-i="'+i.id+'" data-q="1">Sell 1</button><button class="s" data-a="s" data-i="'+i.id+'" data-q="99999">Sell all</button></div></div>'});
- h+='<button class="go" data-a="next">Next day (fee '+money(T.fee)+')</button><button class="go" data-a="share" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Share my progress</button>';
+ h+=locsHtml()+'<button class="go" data-a="next">Next day (fee '+money(T.fee)+')</button><button class="go" data-a="share" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Share my progress</button>';
  h+=acctHtml();h+='<p class="note">Playing as '+esc(NAME)+'. Best net worth: '+money(S.best)+'. Naira here is pretend money and cannot be withdrawn.</p>';
  return h}
+function locsHtml(){return '<div class="locs"><div class="sub">Travel to another market (takes 1 day, fare '+money(fareOf())+'). Buy cheap here, sell dear there!</div>'+MK.filter(function(m){return m.id!=S.loc}).map(function(m){return '<button class="s" data-a="go" data-m="'+m.id+'"'+(m.t>S.tier?' disabled':'')+'>'+(m.t>S.tier?'🔒 ':'')+m.n.split(" ")[0]+'</button>'}).join("")+'</div>'}
 function boardHtml(){if(!sbOn())return '<p class="sub">The leaderboard needs your Supabase keys in config.js.</p>';
  var h='<h2 style="margin:8px 0">🏆 Top traders</h2>';
  if(!TOP.length)h+='<p class="sub">No players yet. Play a few days to appear here!</p>';
- TOP.forEach(function(t,i){h+='<div class="item" style="grid-template-columns:auto 1fr auto"><b>'+(i+1)+'</b><span>'+(TIERS[t.tier]?TIERS[t.tier].e:"")+' '+esc(t.name)+'</span><b>'+money(t.best)+'</b></div>'});
+ TOP.forEach(function(t,i){h+='<div class="item" style="grid-template-columns:auto 1fr auto"><b>'+(i+1)+'</b><span>'+(TIERS[t.tier]?TIERS[t.tier].e:"")+' '+esc(shown(t.name))+'</span><b>'+money(t.best)+'</b></div>'});
  return h}
 function chatHtml(){if(!sbOn())return '<p class="sub">Chat needs your Supabase keys in config.js.</p>';
  if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
- return '<div id="msgs" class="msgs"></div><div class="row"><input id="ct" maxlength="200" placeholder="Say something as '+esc(NAME)+'..."></div><button class="go" data-a="send">Send</button><p class="note">Be kind. No links or personal info.</p>'}
+ return '<div id="msgs" class="msgs"></div><div class="row"><input id="ct" maxlength="100" placeholder="How you dey feel, '+esc(NAME)+'?"><button class="go" data-a="sendt" style="margin:0;width:auto;padding:0 16px">Send</button></div><div class="locs">'+PHR.slice(0,4).map(function(p,i){return '<button class="s" data-a="send" data-p="'+i+'">'+p+'</button>'}).join("")+'</div><p class="note">Share your mood, but no links, phone numbers or personal info. Tap ⚑ to report, 🔇 to mute.</p>'}
 function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
 function render(){var a=document.getElementById("app");
  a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():gameHtml());
@@ -136,11 +164,11 @@ function render(){var a=document.getElementById("app");
 document.getElementById("app").addEventListener("click",function(e){
  var b=e.target.closest("button");if(!b)return;var a=b.dataset.a;
  if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
- else if(a=="next")next();else if(a=="share")share();else if(a=="send")sendChat();
- else if(a=="start"){var v=((document.getElementById("nm")||{}).value||"").trim().slice(0,14);if(!v){alert("Please type a name.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
+ else if(a=="next")next();else if(a=="go")next(b.dataset.m);else if(a=="share")share();else if(a=="send")sendChat(+b.dataset.p);else if(a=="sendt")sendChat(-1);else if(a=="rep")reportMsg(b.dataset.id);else if(a=="mute")muteUser(b.dataset.u);
+ else if(a=="start"){var v=cleanName((document.getElementById("nm")||{}).value);if(!v){alert("Use 2 to 14 letters or numbers, and keep it clean.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
  else if(a=="glink")gLink();else if(a=="gsign")gSign();else if(a=="signout")signOut();
  else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}});
-document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat();if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
+document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat(-1);if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
 newGame();
 try{var sv=JSON.parse(localStorage.getItem("mh_save")||"null");if(sv&&sv.day)applySave(sv)}catch(e){}
 render();

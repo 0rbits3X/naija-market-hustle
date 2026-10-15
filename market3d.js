@@ -1,10 +1,14 @@
 // 3D market stall (Three.js). Crates grow as you buy more of each good.
 (function(){
-var host=document.getElementById("scene");
-if(!host||!window.THREE){if(host)host.style.display="none";return}
+var host=document.getElementById("scene");if(!host)return;
+var cn=navigator.connection||{};
+if(cn.saveData||/2g/.test(cn.effectiveType||"")||(navigator.deviceMemory&&navigator.deviceMemory<=2))return;
+function load(){var s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";s.onload=boot;document.head.appendChild(s)}
+if(document.readyState=="complete")setTimeout(load,800);else addEventListener("load",function(){setTimeout(load,800)});
+function boot(){if(!window.THREE)return;
 var W=host.clientWidth||360,H=190,r;
-try{r=new THREE.WebGLRenderer({antialias:true,alpha:true})}catch(e){host.style.display="none";return}
-r.setPixelRatio(Math.min(window.devicePixelRatio||1,2));r.setSize(W,H);host.appendChild(r.domElement);
+try{r=new THREE.WebGLRenderer({antialias:true,alpha:true})}catch(e){return}
+r.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));r.setSize(W,H);host.innerHTML="";host.appendChild(r.domElement);
 var sc=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,W/H,.1,100);
 cam.position.set(0,4.2,10);
 sc.add(new THREE.HemisphereLight(0xffffff,0x446644,.95));
@@ -28,5 +32,5 @@ function tick(t){
  for(var k=0;k<5;k++){var c=crates[k],h=c.scale.y*.5,n=h+(target[k]-h)*.12;c.scale.y=n/.5;c.position.y=.8+n/2}
  r.render(sc,cam)}
 requestAnimationFrame(tick);
-if(window.S&&S.inv)mh3d.update(S.inv);
+if(window.S&&S.inv)mh3d.update(S.inv,TIERS[S.tier].cap/2)}
 })();
