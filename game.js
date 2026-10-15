@@ -19,7 +19,7 @@ var EVENTS=[
 {t:"Gridlock on Airport Road: pepper and tomatoes are late and pricey.",f:{pep:1.5,tom:1.4}},
 {t:"FCT task force levy!",lev:1}];
 var SB_URL=(window.CFG&&CFG.url)||"",SB_KEY=(window.CFG&&CFG.key)||"";
-var tab="game",S,TOP=[],NAME="",AUTH=null;
+var tab="game",S,TOP=[],NAME="",AUTH=null,CODE="";
 var PHR=["Good morning, oga! 👋","Fresh goods, come and buy! 🛒","Price don drop! 📉","Price don rise! 📈","Who wan trade? 🤝","Well done! 👏","I just got promoted! 🎉","Abeg, small discount?","Rain dey fall 🌧️","Market is busy today 🔥"];
 var MK=[{id:"wuse",n:"Wuse Market",t:0,m:{}},{id:"garki",n:"Garki Market",t:1,m:{rice:.85,fish:1.1}},{id:"utako",n:"Utako Market",t:2,m:{tom:1.15,pep:1.1,fish:.9}},{id:"kubwa",n:"Kubwa Market",t:2,m:{yam:.75,pep:.8,rice:1.15,fish:1.2}}];
 var BAD=/fuck|fvck|shit|bitch|dick|pussy|sex|porn|nude|rape|nigg|whore|asshole|ashawo|idiot|stupid/i;
@@ -86,11 +86,10 @@ function newGame(){S={day:1,cash:START*1000,inv:{},tier:0,best:0,prev:null,price
 function saveLocal(){try{localStorage.setItem("mh_save",JSON.stringify(snap()))}catch(e){}}
 var sct;function saveCloud(){clearTimeout(sct);sct=setTimeout(doCloud,1500)}
 function doCloud(){if(!sbOn()||!NAME)return;
- ensureAuth().then(function(){var h=H(1);h["Prefer"]="resolution=merge-duplicates,return=minimal";
-  return fetch(SB_URL+"/rest/v1/players?on_conflict=id",{method:"POST",headers:h,body:JSON.stringify({id:AUTH.id,name:cleanName(NAME)||"Trader",best:Math.round(S.best),tier:S.tier,save:snap(),updated_at:new Date().toISOString()})})}).catch(function(){})}
+ ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/rpc/mh_sync",{method:"POST",headers:H(1),body:JSON.stringify({p_name:cleanName(NAME)||"Trader",p_best:Math.round(S.best),p_save:snap()})})}).catch(function(){})}
 function loadCloud(force){if(!sbOn())return;
- ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/players?id=eq."+AUTH.id+"&select=name,save",{headers:H(1)})})
- .then(function(r){return r.json()}).then(function(rows){var p=rows&&rows[0];if(!p||!p.save)return;
+ ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/players?id=eq."+AUTH.id+"&select=name,save,code",{headers:H(1)})})
+ .then(function(r){return r.json()}).then(function(rows){var p=rows&&rows[0];if(!p||!p.save)return;if(p.code)CODE=p.code;
   if(!NAME&&cleanName(p.name)){NAME=cleanName(p.name);try{localStorage.setItem("mh_name",NAME)}catch(e){}}
   if(force||p.save.day>S.day){applySave(p.save);saveLocal()}render()}).catch(function(){})}
 function buy(id,q){var p=S.prices[id];q=Math.min(q,Math.floor(S.cash/p),TIERS[S.tier].cap-count());if(q>0){S.cash-=q*p;S.inv[id]+=q}render()}
@@ -114,14 +113,14 @@ function share(){var t="I'm a "+TIERS[S.tier].n+" "+TIERS[S.tier].e+" in Naija M
  else if(navigator.clipboard){navigator.clipboard.writeText(t+" "+location.href).then(function(){alert("Copied! Paste it to your friends.")}).catch(function(){})}}
 /* ---- leaderboard + chat ---- */
 function loadLB(){if(!sbOn())return;
- fetch(SB_URL+"/rest/v1/players?select=name,best,tier&best=gt.0&order=best.desc&limit=20",{headers:H()})
+ fetch(SB_URL+"/rest/v1/leaderboard?select=name,best,tier&order=best.desc&limit=20",{headers:H()})
  .then(function(r){return r.json()}).then(function(rows){if(Array.isArray(rows)){TOP=rows;if(tab=="board")render()}}).catch(function(){})}
 function loadChat(){if(!sbOn()||tab!="chat")return;
  fetch(SB_URL+"/rest/v1/messages?select=id,name,body,uid&hidden=eq.false&order=created_at.desc&limit=40",{headers:H()})
  .then(function(r){return r.json()}).then(function(rows){var m=document.getElementById("msgs");if(!m||!Array.isArray(rows))return;
   m.innerHTML=rows.filter(function(x){return !msgBad(x.body)&&MUTED.indexOf(x.uid)<0&&!REPD[x.id]}).reverse().map(function(x){var me=AUTH&&x.uid==AUTH.id;return '<div class="msg"><b>'+esc(shown(x.name))+'</b> '+esc(String(x.body).slice(0,100))+(me?'':' <button class="r" data-a="rep" data-id="'+esc(x.id)+'" aria-label="Report">⚑</button><button class="r" data-a="mute" data-u="'+esc(x.uid)+'" aria-label="Mute">🔇</button>')+'</div>'}).join("")||'<p class="sub">No messages yet. Say hello!</p>';m.scrollTop=m.scrollHeight}).catch(function(){})}
 var lastC=0;
-function sendChat(i){var t=document.getElementById("ct"),txt=(i>=0?PHR[i]:((t&&t.value)||"")).trim().slice(0,100);if(!txt||!NAME)return;
+function sendChat(i){var t=null,txt=(PHR[i]||"").trim();if(!txt||!NAME)return;
  var bad=msgBad(txt);if(bad){alert(bad);return}
  if(sadWords(txt)){alert("We are sorry you feel this way. Please talk to a parent, teacher or someone you trust today.");return}
  if(Date.now()-lastC<5000){alert("Small small! Wait a few seconds.");return}lastC=Date.now();
@@ -131,7 +130,7 @@ function sendChat(i){var t=document.getElementById("ct"),txt=(i>=0?PHR[i]:((t&&t
 function reportMsg(id){if(!id||!confirm("Report this message?"))return;REPD[id]=1;
  ensureAuth().then(function(){var h=H(1);h["Prefer"]="return=minimal";return fetch(SB_URL+"/rest/v1/reports",{method:"POST",headers:h,body:JSON.stringify({message_id:String(id)})})}).catch(function(){});loadChat();alert("Thanks. We will check it.")}
 function muteUser(u){if(!u||!confirm("Hide all messages from this player?"))return;MUTED.push(u);try{localStorage.setItem("mh_mute",JSON.stringify(MUTED))}catch(e){}loadChat()}
-setInterval(loadChat,4000);
+setInterval(function(){if(!document.hidden)loadChat()},10000);
 /* ---- screens ---- */
 function nameHtml(){return '<div class="end"><div class="big">🧺</div><h2>Welcome, trader!</h2><p class="sub">Pick a name. Your progress is saved to your account, so you can come back anytime.</p><div class="row"><input id="nm" maxlength="14" placeholder="Your trader name"></div><button class="go" data-a="start">Start hustling</button></div>'}
 function gameHtml(){
@@ -156,17 +155,31 @@ function boardHtml(){if(!sbOn())return '<p class="sub">The leaderboard needs you
  return h}
 function chatHtml(){if(!sbOn())return '<p class="sub">Chat needs your Supabase keys in config.js.</p>';
  if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
- return '<div id="msgs" class="msgs"></div><div class="row"><input id="ct" maxlength="100" placeholder="How you dey feel, '+esc(NAME)+'?"><button class="go" data-a="sendt" style="margin:0;width:auto;padding:0 16px">Send</button></div><div class="locs">'+PHR.slice(0,4).map(function(p,i){return '<button class="s" data-a="send" data-p="'+i+'">'+p+'</button>'}).join("")+'</div><p class="note">Share your mood, but no links, phone numbers or personal info. Tap ⚑ to report, 🔇 to mute.</p>'}
-function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
+ return '<div id="msgs" class="msgs"></div><div class="sub">Tap a phrase to say it:</div><div class="locs">'+PHR.map(function(p,i){return '<button class="s" data-a="send" data-p="'+i+'">'+p+'</button>'}).join("")+'</div><p class="note">Chat uses ready-made phrases only, so it stays safe. Tap ⚑ to report, 🔇 to mute.</p>'}
+/* ---- gifts (small, limited, no text) ---- */
+var GMSG={low_level:"You can send gifts once you reach Market stall level.",too_big:"Amount must be from ₦100 up to a small limit for your level.",not_found:"No trader has that code.",self:"You cannot send a gift to yourself.",daily_limit:"Gift limit for today reached. Try again tomorrow.",inbox_full:"That trader has too many gifts waiting. Try later.",auth:"Try again in a moment."};
+function sendGift(){var c=((document.getElementById("gc")||{}).value||"").trim().toUpperCase(),n=Math.floor(+((document.getElementById("ga")||{}).value)||0);
+ if(!/^[A-F0-9]{6}$/.test(c)){alert("Type the 6-character code of your friend.");return Promise.resolve()}
+ if(n<100){alert("Smallest gift is "+money(100)+".");return Promise.resolve()}
+ if(n>S.cash){alert("You do not have that much cash.");return Promise.resolve()}
+ return ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/rpc/mh_send",{method:"POST",headers:H(1),body:JSON.stringify({p_code:c,p_amount:n})})})
+  .then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(res){
+   if(res==="ok"){S.cash-=n;saveLocal();saveCloud();alert("Sent "+money(n)+"! 🎁");render()}else alert(GMSG[res]||"Gift not sent.")}).catch(function(){alert("Gift not sent. Check your network.")})}
+function claimGifts(){return ensureAuth().then(function(){return fetch(SB_URL+"/rest/v1/rpc/mh_claim",{method:"POST",headers:H(1),body:"{}"})})
+ .then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(n){n=+n||0;if(n>0){S.cash+=n;saveLocal();saveCloud();render();alert("You got "+money(n)+" in gifts! 🎉")}else alert("No gifts waiting.")}).catch(function(){alert("Could not check gifts. Try again.")})}
+function giftHtml(){if(!sbOn())return '<p class="sub">Gifts need online mode.</p>';
+ if(!NAME)return '<p class="sub">Pick a trader name on the Market tab first.</p>';
+ return '<h2 style="margin:8px 0">🎁 Help a friend</h2><p class="sub">Your trader code: <b>'+esc(CODE||"(play one day to get it)")+'</b>. Share it only with friends you know.</p><div class="row"><input id="gc" maxlength="6" placeholder="Friend code" autocapitalize="characters"><input id="ga" type="number" inputmode="numeric" placeholder="Amount"></div><button class="go" data-a="gsend">Send gift</button><button class="go" data-a="gget" style="background:transparent;color:var(--fg);border:2px solid var(--line)">Collect my gifts</button><p class="note">Gifts are small and limited each day. You need Market stall level to send. Naira here is pretend money and cannot be withdrawn.</p>'}
+function tabsHtml(){return '<nav class="tabs">'+[["game","🛒 Market"],["board","🏆 Top"],["chat","💬 Chat"],["gift","🎁 Gifts"]].map(function(t){return '<button class="'+(tab==t[0]?"on":"")+'" data-a="tab" data-t="'+t[0]+'">'+t[1]+'</button>'}).join("")+'</nav>'}
 function render(){var a=document.getElementById("app");
- a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():gameHtml());
+ a.innerHTML='<div class="awn" aria-hidden="true"></div>'+tabsHtml()+(tab=="board"?boardHtml():tab=="chat"?chatHtml():tab=="gift"?giftHtml():gameHtml());
  if(tab=="chat")loadChat();if(window.mh3d&&S)mh3d.update(S.inv,TIERS[S.tier].cap/2)}
 document.getElementById("app").addEventListener("click",function(e){
  var b=e.target.closest("button");if(!b)return;var a=b.dataset.a;
  if(a=="b")buy(b.dataset.i,+b.dataset.q);else if(a=="s")sell(b.dataset.i,+b.dataset.q);
  else if(a=="next")next();else if(a=="go")next(b.dataset.m);else if(a=="share")share();else if(a=="send")sendChat(+b.dataset.p);else if(a=="sendt")sendChat(-1);else if(a=="rep")reportMsg(b.dataset.id);else if(a=="mute")muteUser(b.dataset.u);
  else if(a=="start"){var v=cleanName((document.getElementById("nm")||{}).value);if(!v){alert("Use 2 to 14 letters or numbers, and keep it clean.");return}NAME=v;try{localStorage.setItem("mh_name",v)}catch(x){}saveCloud();render()}
- else if(a=="glink")gLink();else if(a=="gsign")gSign();else if(a=="signout")signOut();
+ else if(a=="gsend")sendGift();else if(a=="gget")claimGifts();else if(a=="glink")gLink();else if(a=="gsign")gSign();else if(a=="signout")signOut();
  else if(a=="tab"){tab=b.dataset.t;render();if(tab=="board")loadLB()}});
 document.getElementById("app").addEventListener("keydown",function(e){if(e.key=="Enter"){if(e.target.id=="ct")sendChat(-1);if(e.target.id=="nm")document.querySelector('[data-a="start"]').click()}});
 newGame();
